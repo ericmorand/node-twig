@@ -1,0 +1,30 @@
+{
+  "name": "node-twig",
+  "version": "0.1.0",
+  "description": "Pure Node.js implementation of the Twig PHP templating language (http://twig.sensiolabs.org/)",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "tap test/*.js --cov --reporter=spec --100"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ericmorand/node-twig.git"
+  },
+  "author": "Eric MORAND",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/ericmorand/node-twig/issues"
+  },
+  "homepage": "https://github.com/ericmorand/node-twig#readme",
+  "devDependencies": {
+    "tap": "^10.3.0"
+  },
+  "dependencies": {
+    "Promise": "^1.0.5",
+    "locutus": "^2.0.8",
+    "merge": "^1.2.0",
+    "promise": "^7.1.1",
+    "repeat-string": "^1.6.1",
+    "sprintf-js": "^1.0.3"
+  }
+}
