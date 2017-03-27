@@ -1,9 +1,43 @@
+const TwigExtensionCore = require('./extension-core');
+const TwigExtensionSet = require('./extension-set');
+const TwigExtensionEscaper = require('./extension-escaper');
+const TwigExtensionOptimizer = require('./extension-optimizer');
+const TwigCacheInterface = require('./cache-interface');
+const TwigCacheFilesystem = require('./cache/file-system');
+const TwigCacheNull = require('./cache/null');
+const TwigCompiler = require('./compiler');
+const TwigTemplate = require('./template');
+const TwigTemplateWrapper = require('./template-wrapper');
+const TwigError = require('./error');
+const TwigErrorRuntime = require('./error/runtime');
+const TwigErrorLoader = require('./error/loader');
+const TwigErrorSyntax = require('./error/syntax');
+const TwigLoaderChain = require('./loader/chain');
+const TwigLoaderArray = require('./loader/array');
+const TwigLexer = require('./lexer');
+const TwigParser = require('./parser');
+
+const is_object = require('locutus/php/var/is_object');
+const gettype = require('locutus/php/var/gettype');
+const isset = require('locutus/php/var/isset');
+const array_key_exists = require('locutus/php/array/array_key_exists');
+const count = require('locutus/php/array/count');
+const implode = require('locutus/php/strings/implode');
+const sprintf = require('locutus/php/strings/sprintf');
+const str_repeat = require('locutus/php/strings/str_repeat');
+const strlen = require('locutus/php/strings/strlen');
+const str_replace = require('locutus/php/strings/str_replace');
+const var_export = require('locutus/php/var/var_export');
+const ltrim = require('locutus/php/strings/ltrim');
 const array_merge = require('locutus/php/array/array_merge');
+const hash = require('locutus/php/strings/md5');
+const uniqid = require('locutus/php/misc/uniqid');
+const mt_rand = require('locutus/php/math/mt_rand');
+const strtoupper = require('locutus/php/strings/strtoupper');
 
 /**
  * Stores the Twig configuration.
  *
- * @author Eric MORAND <eric.morand@gmail.com>
  */
 class TwigEnvironment {
   /**
@@ -40,10 +74,12 @@ class TwigEnvironment {
    *                   (default to -1 which means that all optimizations are enabled;
    *                   set it to 0 to disable).
    *
-   * @param {TwigLoaderInterface} loader
-   * @param {Array}               options An array of options
+   * @param {TwigLoaderInterface} $loader
+   * @param {Array}               [$options] An array of options
    */
   constructor($loader, $options) {
+    $options = $options || {};
+
     this.charset = null;
     this.loader = null;
     this.debug = null;
@@ -63,10 +99,10 @@ class TwigEnvironment {
     this.runtimeLoaders = [];
     this.runtimes = [];
     this.optionsHash = null;
-    
+
     this.loader = $loader;
 
-    options = array_merge({
+    $options = array_merge({
       debug: false,
       charset: 'UTF-8',
       base_template_class: 'TwigTemplate',
@@ -75,19 +111,19 @@ class TwigEnvironment {
       cache: false,
       auto_reload: null,
       optimizations: -1
-    }, options);
+    }, $options);
 
-    this.debug = options.debug;
-    this.setCharset(options.charset);
-    this.baseTemplateClass = options.base_template_class;
-    this.autoReload = null === options.auto_reload ? this.debug : options.auto_reload;
-    this.strictVariables = options.strict_variables;
-    this.setCache(options.cache);
+    this.debug = $options.debug;
+    this.setCharset($options.charset);
+    this.baseTemplateClass = $options.base_template_class;
+    this.autoReload = null === $options.auto_reload ? this.debug : $options.auto_reload;
+    this.strictVariables = $options.strict_variables;
+    this.setCache($options.cache);
     this.extensionSet = new TwigExtensionSet();
 
     this.addExtension(new TwigExtensionCore());
-    this.addExtension(new TwigExtensionEscaper(options.autoescape));
-    this.addExtension(new TwigExtensionOptimizer(options.optimizations));
+    this.addExtension(new TwigExtensionEscaper($options.autoescape));
+    this.addExtension(new TwigExtensionOptimizer($options.optimizations));
   }
 
   /**
@@ -187,7 +223,7 @@ class TwigEnvironment {
    *
    * @param {boolean} original Whether to return the original cache option or the real cache instance
    *
-   * @return {TwigCacheInterface|string|false} A TwigCacheInterface implementation,
+   * @return {TwigCacheInterface|string|boolean} A TwigCacheInterface implementation,
    *                                           an absolute path to the compiled templates,
    *                                           or false to disable cache
    */
@@ -211,11 +247,11 @@ class TwigEnvironment {
       this.originalCache = cache;
       this.cache = new TwigCacheNull();
     }
-    else if (cache instanceof Twig_CacheInterface) {
+    else if (cache instanceof TwigCacheInterface) {
       this.originalCache = this.cache = cache;
     }
     else {
-      throw new LogicException('Cache can only be a string, false, or a TwigCacheInterface implementation.');
+      throw new Error('Cache can only be a string, false, or a TwigCacheInterface implementation.');
     }
   }
 
@@ -231,64 +267,64 @@ class TwigEnvironment {
    *  * Twig version;
    *  * Options with what environment was created.
    *
-   * @param string   $name  The name for which to calculate the template class name
-   * @param int|null $index The index if it is an embedded template
+   * @param {string}   $name  The name for which to calculate the template class name
+   * @param {Number}   [$index] The index if it is an embedded template
    *
    * @return string The template class name
    */
-  getTemplateClass(name, index) {
-    $key = this.getLoader().getCacheKey(name).this.optionsHash;
+  getTemplateClass($name, $index) {
+    let $key = this.getLoader().getCacheKey($name) + this.optionsHash;
 
-    return this.templateClassPrefix.hash('sha256', $key).(null === $index ? '' : '_'.$index);
+    return this.templateClassPrefix.hash('sha256', $key) + (null === $index ? '' : '_' + $index);
   }
 
   /**
    * Renders a template.
    *
-   * @param string $name    The template name
-   * @param array  $context An array of parameters to pass to the template
+   * @param {string} $name    The template name
+   * @param {Array}  $context An array of parameters to pass to the template
    *
    * @return string The rendered template
    *
-   * @throws Twig_Error_Loader  When the template cannot be found
-   * @throws Twig_Error_Syntax  When an error occurred during compilation
-   * @throws Twig_Error_Runtime When an error occurred during rendering
+   * @throws TwigErrorLoader  When the template cannot be found
+   * @throws TwigErrorSyntax  When an error occurred during compilation
+   * @throws TwigErrorRuntime When an error occurred during rendering
    */
-  render($name, context) {
+  render($name, $context) {
     return this.loadTemplate($name).render($context);
   }
 
   /**
    * Displays a template.
    *
-   * @param string $name    The template name
-   * @param array  $context An array of parameters to pass to the template
+   * @param {string} $name    The template name
+   * @param {Array}  $context An array of parameters to pass to the template
    *
-   * @throws Twig_Error_Loader  When the template cannot be found
-   * @throws Twig_Error_Syntax  When an error occurred during compilation
-   * @throws Twig_Error_Runtime When an error occurred during rendering
+   * @throws TwigErrorLoader  When the template cannot be found
+   * @throws TwigErrorSyntax  When an error occurred during compilation
+   * @throws TwigErrorRuntime When an error occurred during rendering
    */
-  display(name, context) {
-    this.loadTemplate(name).display(context);
+  display($name, $context) {
+    this.loadTemplate($name).display($context);
   }
 
   /**
    * Loads a template.
    *
-   * @param string|Twig_TemplateWrapper|Twig_Template $name The template name
+   * @param {string|TwigTemplateWrapper|TwigTemplate} $name The template name
    *
-   * @return Twig_TemplateWrapper
+   * @return {TwigTemplateWrapper}
    */
-  load(name) {
-    if (name instanceof TwigTemplateWrapper) {
-      return name;
+  load($name) {
+    if ($name instanceof TwigTemplateWrapper) {
+      return $name;
     }
 
-    if (name instanceof TwigTemplate) {
-      return new TwigTemplateWrapper(this, name);
+    if ($name instanceof TwigTemplate) {
+      return new TwigTemplateWrapper(this, $name);
     }
 
-    return new TwigTemplateWrapper(this, this.loadTemplate(name));
+    return new TwigTemplateWrapper(this, this.loadTemplate($name));
   }
 
   /**
@@ -297,53 +333,54 @@ class TwigEnvironment {
    * This method is for internal use only and should never be called
    * directly.
    *
-   * @param string $name  The template name
-   * @param int    $index The index if it is an embedded template
+   * @param {string}  $name     The template name
+   * @param {Number}  [$index]  The index if it is an embedded template
    *
-   * @return Twig_Template A template instance representing the given template name
+   * @return {TwigTemplate} A template instance representing the given template name
    *
-   * @throws Twig_Error_Loader  When the template cannot be found
-   * @throws Twig_Error_Runtime When a previously generated cache is corrupted
-   * @throws Twig_Error_Syntax  When an error occurred during compilation
+   * @throws {TwigErrorLoader}  When the template cannot be found
+   * @throws {TwigErrorRuntime} When a previously generated cache is corrupted
+   * @throws {TwigErrorSyntax}  When an error occurred during compilation
    *
    * @internal
    */
-  loadTemplate(name, index) {
-    let cls = mainCls = this.getTemplateClass(name);
+  loadTemplate($name, $index) {
+    let $cls = this.getTemplateClass($name);
+    let $mainCls = $cls;
 
-    if (null !== index) {
-      cls += '_' + index;
+    if (null !== $index) {
+      $cls += '_' + $index;
     }
 
-    if (isset(this.loadedTemplates[cls])) {
-      return this.loadedTemplates[cls];
+    if (isset(this.loadedTemplates[$cls])) {
+      return this.loadedTemplates[$cls];
     }
 
     if (!class_exists(cls, false)) {
-      let key = this.cache.generateKey(name, mainCls);
+      let $key = this.cache.generateKey($name, $mainCls);
 
-      if (!this.isAutoReload() || this.isTemplateFresh(name, this.cache.getTimestamp(key))) {
-        this.cache.load(key);
+      if (!this.isAutoReload() || this.isTemplateFresh($name, this.cache.getTimestamp($key))) {
+        this.cache.load($key);
       }
 
-      if (!class_exists(cls, false)) {
-        let source = this.getLoader().getSourceContext(name);
-        let content = this.compileSource(source);
+      if (!class_exists($cls, false)) {
+        let $source = this.getLoader().getSourceContext($name);
+        let $content = this.compileSource($source);
 
-        this.cache.write(key, content);
-        this.cache.load(key);
+        this.cache.write($key, $content);
+        this.cache.load($key);
 
-        if (!class_exists(mainCls, false)) {
+        if (!class_exists($mainCls, false)) {
           /* Last line of defense if either this.bcWriteCacheFile was used,
            * this.cache is implemented as a no-op or we have a race condition
            * where the cache was cleared between the above calls to write to and load from
            * the cache.
            */
-          eval('?>'.content);
+          eval('?>' + $content);
         }
 
-        if (!class_exists(cls, false)) {
-          throw new TwigErrorRuntime(sprintf('Failed to load Twig template "%s", index "%s": cache is corrupted.', name, index), -1, source);
+        if (!class_exists($cls, false)) {
+          throw new TwigErrorRuntime(sprintf('Failed to load Twig template "%s", index "%s": cache is corrupted.', name, $index), -1, $source);
         }
       }
     }
@@ -351,7 +388,7 @@ class TwigEnvironment {
     // to be removed in 3.0
     this.extensionSet.initRuntime(this);
 
-    return this.loadedTemplates[cls] = new cls(this);
+    return this.loadedTemplates[$cls] = new $cls(this);
   }
 
   /**
@@ -359,35 +396,37 @@ class TwigEnvironment {
    *
    * This method should not be used as a generic way to load templates.
    *
-   * @param string $template The template name
+   * @param {string} $template The template name
    *
-   * @return Twig_Template A template instance representing the given template name
+   * @return {TwigTemplate} A template instance representing the given template name
    *
-   * @throws Twig_Error_Loader When the template cannot be found
-   * @throws Twig_Error_Syntax When an error occurred during compilation
+   * @throws {TwigErrorLoader} When the template cannot be found
+   * @throws {TwigErrorSyntax} When an error occurred during compilation
    */
-  createTemplate(template) {
-    $name = sprintf('__string_template__%s', hash('sha256', uniqid(mt_rand(), true), false));
+  createTemplate($template) {
+    let $name = sprintf('__string_template__%s', hash(uniqid(mt_rand(), true)));
 
-    let current = this.getLoader();
+    let $current = this.getLoader();
 
-    loader = new TwigLoaderChain([
+    let $loader = new TwigLoaderChain([
       new TwigLoaderArray({
-        name: template
+        name: $template
       }),
-      current
+      $current
     ]);
 
-    this.setLoader(loader);
+    this.setLoader($loader);
+
+    let $result = null;
 
     try {
-      template = this.loadTemplate(name);
+      $result = this.loadTemplate($name);
     }
     finally {
-      this.setLoader(current);
+      this.setLoader($current);
     }
 
-    return template;
+    return $result;
   }
 
   /**
@@ -397,13 +436,13 @@ class TwigEnvironment {
    * this method also checks if the enabled extensions have
    * not changed.
    *
-   * @param string $name The template name
-   * @param int    $time The last modification time of the cached template
+   * @param {string}  $name The template name
+   * @param {Number}  $time The last modification time of the cached template
    *
    * @return bool true if the template is fresh, false otherwise
    */
-  isTemplateFresh(name, time) {
-    return this.extensionSet.getLastModified() <= time && this.getLoader().isFresh(name, time);
+  isTemplateFresh($name, $time) {
+    return this.extensionSet.getLastModified() <= $time && this.getLoader().isFresh($name, $time);
   }
 
   /**
@@ -412,56 +451,56 @@ class TwigEnvironment {
    * Similar to loadTemplate() but it also accepts Twig_Template instances and an array
    * of templates where each is tried to be loaded.
    *
-   * @param string|Twig_Template|array $names A template or an array of templates to try consecutively
+   * @param {string|TwigTemplate|Array} $names A template or an array of templates to try consecutively
    *
-   * @return Twig_Template
+   * @return {TwigTemplate}
    *
-   * @throws Twig_Error_Loader When none of the templates can be found
-   * @throws Twig_Error_Syntax When an error occurred during compilation
+   * @throws {TwigErrorLoader} When none of the templates can be found
+   * @throws {TwigErrorSyntax} When an error occurred during compilation
    */
-  resolveTemplate(names) {
+  resolveTemplate($names) {
     let self = this;
 
-    if (!Array.isArray(names)) {
-      names = [names];
+    if (!Array.isArray($names)) {
+      $names = [$names];
     }
 
     let error = null;
 
-    names.forEach(function (name) {
-      if (name instanceof Twig_Template) {
-        return name;
+    $names.forEach(function ($name) {
+      if ($name instanceof TwigTemplate) {
+        return $name;
       }
 
       try {
-        return self.loadTemplate(name);
+        return self.loadTemplate($name);
       }
       catch (err) {
         error = err;
       }
     });
 
-    if (1 === names.length) {
+    if (1 === $names.length) {
       throw error;
     }
 
     throw new TwigErrorLoader(sprintf('Unable to find one of the following templates: "%s".', implode('", "', $names)));
   }
 
-  setLexer(lexer) {
-    this.lexer = lexer;
+  setLexer($lexer) {
+    this.lexer = $lexer;
   }
 
   /**
    * Tokenizes a source code.
    *
-   * @return Twig_TokenStream
+   * @return {TwigTokenStream}
    *
-   * @throws Twig_Error_Syntax When the code is syntactically wrong
+   * @throws {TwigErrorSyntax} When the code is syntactically wrong
    */
-  tokenize(source) {
+  tokenize($source) {
     if (null === this.lexer) {
-      this.lexer = new Twig_Lexer($this);
+      this.lexer = new TwigLexer(this);
     }
 
     return this.lexer.tokenize($source);
@@ -476,7 +515,7 @@ class TwigEnvironment {
    *
    * @return Twig_Node_Module
    *
-   * @throws Twig_Error_Syntax When the token stream is syntactically or semantically wrong
+   * @throws TwigErrorSyntax When the token stream is syntactically or semantically wrong
    */
   parse(stream) {
     if (null === this.parser) {
@@ -493,11 +532,11 @@ class TwigEnvironment {
   /**
    * Compiles a node and returns the PHP code.
    *
-   * @return string The compiled PHP source code
+   * @return {string} The compiled PHP source code
    */
-  compile(node) {
+  compile($node) {
     if (null === this.compiler) {
-      this.compiler = new TwigCompiler($this);
+      this.compiler = new TwigCompiler(this);
     }
 
     return this.compiler.compile($node).getSource();
@@ -506,29 +545,24 @@ class TwigEnvironment {
   /**
    * Compiles a template source code.
    *
-   * @return string The compiled PHP source code
+   * @return {string} The compiled PHP source code
    *
-   * @throws Twig_Error_Syntax When there was an error during tokenizing, parsing or compiling
+   * @throws {TwigErrorSyntax} When there was an error during tokenizing, parsing or compiling
    */
-// compileSource(source)
-// {
-//   try {
-//     return this.compile(this.parse(this.tokenize($source)));
-//   } catch (Twig_Error
-//   $e
-// )
-//   {
-//     $e->setSourceContext($source);
-//     throw $e;
-//   }
-// catch
-//   (Exception
-//   $e
-// )
-//   {
-//     throw new Twig_Error_Syntax(sprintf('An exception has been thrown during the compilation of a template ("%s").', $e->getMessage()), -1, $source, $e);
-//   }
-// }
+  compileSource($source) {
+    try {
+      return this.compile(this.parse(this.tokenize($source)));
+    } catch ($err) {
+      if ($err instanceof TwigError) {
+        $err.setSourceContext($source);
+
+        throw $err;
+      }
+      else {
+        throw new TwigErrorSyntax(sprintf('An exception has been thrown during the compilation of a template ("%s").', $err.message), -1, $source, $err);
+      }
+    }
+  }
 
   setLoader(loader) {
     this.loader = loader;
@@ -546,10 +580,10 @@ class TwigEnvironment {
   /**
    * Sets the default template charset.
    *
-   * @param string $charset The default charset
+   * @param {string} $charset The default charset
    */
   setCharset($charset) {
-    if ('UTF8' === $charset = strtoupper($charset)) {
+    if ('UTF8' === ($charset = strtoupper($charset))) {
       // iconv on Windows requires "UTF-8" instead of "UTF8"
       $charset = 'UTF-8';
     }
@@ -569,57 +603,60 @@ class TwigEnvironment {
   /**
    * Returns true if the given extension is registered.
    *
-   * @param string $class The extension class name
+   * @param {string} $className The extension class name
    *
-   * @return bool Whether the extension is registered or not
+   * @return {boolean} Whether the extension is registered or not
    */
-  hasExtension(className) {
-    return this.extensionSet.hasExtension(className);
+  hasExtension($className) {
+    return this.extensionSet.hasExtension($className);
   }
 
   /**
    * Adds a runtime loader.
    */
-  addRuntimeLoader(loader) {
-    this.runtimeLoaders.push(loader);
+  addRuntimeLoader($loader) {
+    this.runtimeLoaders.push($loader);
   }
 
   /**
    * Gets an extension by class name.
    *
-   * @param string $class The extension class name
+   * @param {string} $className The extension class name
    *
-   * @return Twig_ExtensionInterface
+   * @return {TwigExtensionInterface}
    */
-  getExtension(className) {
-    return this.extensionSet.getExtension(className);
+  getExtension($className) {
+    return this.extensionSet.getExtension($className);
   }
 
   /**
    * Returns the runtime implementation of a Twig element (filter/function/test).
    *
-   * @param string $class A runtime class name
+   * @param {string} $className A runtime class name
    *
-   * @return object The runtime implementation
+   * @return {Object} The runtime implementation
    *
-   * @throws Twig_Error_Runtime When the template cannot be found
+   * @throws {TwigErrorRuntime} When the template cannot be found
    */
-  getRuntime(className) {
-    if (isset(this.runtimes[className])) {
-      return this.runtimes[className];
+  getRuntime($className) {
+    let self = this;
+
+    if (isset(this.runtimes[$className])) {
+      return this.runtimes[$className];
     }
 
-    foreach(this.runtimeLoaders as $loader)
-    {
-      if (null !== runtime = loader.load(className)) {
-        return this.runtimes[className] = runtime;
+    this.runtimeLoaders.forEach(function ($loader) {
+      let $runtime = $loader.load($className);
+
+      if (null !== $runtime) {
+        return self.runtimes[$className] = $runtime;
       }
-    }
+    });
 
-    throw new Twig_Error_Runtime(sprintf('Unable to load the "%s" runtime.', className));
+    throw new TwigErrorRuntime(sprintf('Unable to load the "%s" runtime.', $className));
   }
 
-  addExtension(extension) {
+  addExtension($extension) {
     this.extensionSet.addExtension($extension);
 
     this.updateOptionsHash();
@@ -628,7 +665,7 @@ class TwigEnvironment {
   /**
    * Registers an array of extensions.
    *
-   * @param array $extensions An array of extensions
+   * @param {Array} $extensions An array of extensions
    */
   setExtensions($extensions) {
     this.extensionSet.setExtensions($extensions);
@@ -661,16 +698,16 @@ class TwigEnvironment {
   /**
    * Gets registered tags.
    *
-   * @return Twig_TokenParserInterface[]
+   * @return {Map<TwigTokenParserInterface>}
    *
    * @internal
    */
   getTags() {
-    $tags = array();
-    foreach(this.getTokenParsers() as $parser)
-    {
-      $tags[$parser->getTag()] = $parser;
-    }
+    let $tags = new Map();
+
+    this.getTokenParsers().forEach(function ($parser) {
+      $tags.set($parser.getTag(), $parser);
+    });
 
     return $tags;
   }
@@ -690,7 +727,7 @@ class TwigEnvironment {
     return this.extensionSet.getNodeVisitors();
   }
 
-  addFilter(filter) {
+  addFilter($filter) {
     this.extensionSet.addFilter($filter);
   }
 
@@ -700,7 +737,7 @@ class TwigEnvironment {
    * Subclasses may override this method and load filters differently;
    * so no list of filters is available.
    *
-   * @param string $name The filter name
+   * @param {string} $name The filter name
    *
    * @return Twig_Filter|false A Twig_Filter instance or false if the filter does not exist
    *
@@ -732,7 +769,7 @@ class TwigEnvironment {
   /**
    * Registers a Test.
    *
-   * @param Twig_Test $test A Twig_Test instance
+   * @param {TwigTest} $test A Twig_Test instance
    */
   addTest($test) {
     this.extensionSet.addTest($test);
@@ -741,7 +778,7 @@ class TwigEnvironment {
   /**
    * Gets the registered Tests.
    *
-   * @return Twig_Test[]
+   * @return {TwigTest[]}
    *
    * @internal
    */
@@ -752,9 +789,9 @@ class TwigEnvironment {
   /**
    * Gets a test by name.
    *
-   * @param string $name The test name
+   * @param {string} $name The test name
    *
-   * @return Twig_Test|false A Twig_Test instance or false if the test does not exist
+   * @return {TwigTest|boolean} A TwigTest instance or false if the test does not exist
    *
    * @internal
    */
@@ -772,9 +809,9 @@ class TwigEnvironment {
    * Subclasses may override this method and load functions differently;
    * so no list of functions is available.
    *
-   * @param string $name function name
+   * @param {string} $name function name
    *
-   * @return Twig_Function|false A Twig_Function instance or false if the function does not exist
+   * @return {TwigFunction|boolean} A TwigFunction instance or false if the function does not exist
    *
    * @internal
    */
@@ -807,58 +844,58 @@ class TwigEnvironment {
    * New globals can be added before compiling or rendering a template;
    * but after, you can only update existing globals.
    *
-   * @param string $name  The global name
-   * @param mixed  $value The global value
+   * @param {string}  $name  The global name
+   * @param {*}       $value The global value
    */
   addGlobal($name, $value) {
-    if (this.extensionSet.isInitialized() && !array_key_exists($name, this.getGlobals())) {
-      throw new LogicException(sprintf('Unable to add global "%s" as the runtime or the extensions have already been initialized.', $name));
+    if (this.extensionSet.isInitialized() && !this.getGlobals().has($name)) {
+      throw new Error(sprintf('Unable to add global "%s" as the runtime or the extensions have already been initialized.', $name));
     }
 
     if (null !== this.resolvedGlobals) {
-      this.resolvedGlobals[$name] = $value;
+      this.resolvedGlobals.set($name, $value);
     } else {
-      this.globals[$name] = $value;
+      this.globals.set($name, $value);
     }
   }
 
   /**
    * Gets the registered Globals.
    *
-   * @return array An array of globals
+   * @return {Map} An array of globals
    *
    * @internal
    */
   getGlobals() {
     if (this.extensionSet.isInitialized()) {
       if (null === this.resolvedGlobals) {
-        this.resolvedGlobals = array_merge(this.extensionSet.getGlobals(), this.globals);
+        this.resolvedGlobals = new Map([...this.extensionSet.getGlobals(), ...this.globals]);
       }
 
       return this.resolvedGlobals;
     }
 
-    return array_merge(this.extensionSet.getGlobals(), this.globals);
+    return new Map([...this.extensionSet.getGlobals(), ...this.globals]);
   }
 
   /**
    * Merges a context with the defined globals.
    *
-   * @param array $context An array representing the context
+   * @param {Map} $context An array representing the context
    *
-   * @return array The context merged with the globals
+   * @return {Map} The context merged with the globals
    */
-//   mergeGlobals($context) {
-//   // we don't use array_merge as the context being generally
-//   // bigger than globals, this code is faster.
-//   foreach(this.getGlobals() as $key => $value) {
-//   if(!array_key_exists($key, $context)) {
-//   $context[$key] = $value;
-//   }
-// }
-//
-// return $context;
-// }
+  mergeGlobals($context) {
+    // we don't use array_merge as the context being generally
+    // bigger than globals, this code is faster.
+    this.getGlobals().forEach(function ($value, $key) {
+      if (!$context.has($key)) {
+        $context.set($key, $value);
+      }
+    });
+
+    return $context;
+  }
 
   /**
    * Gets the registered unary Operators.
@@ -885,9 +922,9 @@ class TwigEnvironment {
   updateOptionsHash() {
     this.optionsHash = implode(':', array(
       this.extensionSet.getSignature(),
-      PHP_MAJOR_VERSION,
-      PHP_MINOR_VERSION,
-      self::VERSION,
+      // PHP_MAJOR_VERSION,
+      // PHP_MINOR_VERSION,
+      TwigEnvironment.VERSION,
       this.debug,
       this.baseTemplateClass,
       this.strictVariables
