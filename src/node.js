@@ -5,15 +5,13 @@ const array_key_exists = require('locutus/php/array/array_key_exists');
 const count = require('locutus/php/array/count');
 const implode = require('locutus/php/strings/implode');
 const explode = require('locutus/php/strings/explode');
+const sprintf = require('locutus/php/strings/sprintf');
 const str_repeat = require('locutus/php/strings/str_repeat');
 const strlen = require('locutus/php/strings/strlen');
 const str_replace = require('locutus/php/strings/str_replace');
 const var_export = require('locutus/php/var/var_export');
 const ltrim = require('locutus/php/strings/ltrim');
-
-const get_class = function(obj) {
-  return obj.constructor.name;
-}
+const get_class = require('./lib/get_class');
 
 /**
  * Represents a node in the AST.
@@ -33,30 +31,29 @@ class TwigNode {
    * @param {string}  [$tag]        The tag name associated with the Node
    */
   constructor($nodes, $attributes, $lineno, $tag) {
+    let self = this;
+
     $nodes = $nodes || new Map();
     $attributes = $attributes || new Map();
     $lineno = $lineno || 0;
 
-    this.$nodes = null;
-    this.$attributes = null;
-    this.$lineno = null;
-    this.$tag = null;
+    self.$nodes = null;
+    self.$attributes = null;
+    self.$lineno = null;
+    self.$tag = null;
 
-    this.$name = null;
+    self.$name = null;
 
     $nodes.forEach(function ($node, $name) {
-      console.log('FOREACH', $node, $name, $node.prototype instanceof TwigNode);
-
-      if (!$node.prototype instanceof TwigNode) {
-        // throw new InvalidArgumentException(sprintf('Using "%s" for the value of node "%s" of "%s" is not supported. You must pass a TwigNode instance.', is_object($node) ? get_class($node) : null === $node ? 'null' : gettype($node), $name, get_class(this)));
-        throw new Error(sprintf('Using "%s" for the value of node "%s" of "%s" is not supported. You must pass a TwigNode instance.', is_object($node) ? get_class($node) : null === $node ? 'null' : gettype($node), $name, get_class(this)));
+      if (!($node instanceof TwigNode)) {
+        throw new Error(sprintf('Using "%s" for the value of node "%s" of "%s" is not supported. You must pass a TwigNode instance.', is_object($node) ? get_class($node) : null === $node ? 'null' : gettype($node), $name, get_class(self)));
       }
     });
 
-    this.$nodes = $nodes;
-    this.$attributes = $attributes;
-    this.$lineno = $lineno;
-    this.$tag = $tag;
+    self.$nodes = $nodes;
+    self.$attributes = $attributes;
+    self.$lineno = $lineno;
+    self.$tag = $tag;
   }
 
   toString() {
@@ -73,7 +70,7 @@ class TwigNode {
         let $len = strlen($name) + 4;
         let $noderepr = [];
 
-        explode("\n", $node).forEach(function ($line) {
+        explode("\n", $node.toString()).forEach(function ($line) {
           $noderepr.push(str_repeat(' ', $len) + $line);
         });
 
@@ -110,7 +107,7 @@ class TwigNode {
   }
 
   /**
-   * @return mixed
+   * @return {*}
    */
   getAttribute($name) {
     if (!this.hasAttribute($name)) {
@@ -168,6 +165,7 @@ class TwigNode {
 
   setTemplateName($name) {
     this.$name = $name;
+
     this.$nodes.forEach(function ($node) {
       $node.setTemplateName($name);
     })

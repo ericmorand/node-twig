@@ -4,6 +4,7 @@
   "description": "Pure Node.js implementation of the Twig PHP templating language (http://twig.sensiolabs.org/)",
   "main": "src/index.js",
   "scripts": {
+    "pretest": "npm prune && npm update",
     "test": "tap test/*.js --cov --reporter=spec --100"
   },
   "repository": {
@@ -17,6 +18,7 @@
   },
   "homepage": "https://github.com/ericmorand/node-twig#readme",
   "devDependencies": {
+    "remove-whitespace": "^1.1.0",
     "tap": "^10.3.0"
   },
   "dependencies": {
